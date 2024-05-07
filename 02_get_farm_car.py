@@ -1,3 +1,20 @@
+'''
+    Get Farm CAR layers in a GPKG file from a longitude latitude pair 
+        right on command line, like:
+        
+    python3 02_get_farm_car.py -47.84671 -21.96459
+'''
+
+# CARs source folder
+f_car = '/home/geodata/Vetorial/fundiario/CAR/'
+
+# municipalities
+municipios = '/home/geodata/Vetorial/municipios.parquet'
+
+# Farms save folder
+f_farms = '/home/geodata/Clientes/0FARMS/'
+
+
 import argparse
 parser = argparse.ArgumentParser(description='Enter X (longitude), Y (latitude)')
 # Required positional argument
@@ -13,15 +30,14 @@ print(f'Retrieving farm CAR for {coords}')
 import geopandas as gpd
 from shapely import Point
 from os import walk
+from pathlib import Path
 
 s_ = gpd.GeoSeries([Point(coords)])
 s_ = s_.set_crs(4326)
 s = gpd.GeoDataFrame(['ponto'],geometry = s_)
 print(s)
 
-f_car = '/home/geodata/Vetorial/fundiario/CAR/'
-f_farms = '/home/geodata/Clientes/0FARMS/'
-municipios = '/home/geodata/Vetorial/municipios.parquet'
+
 muni = gpd.read_parquet(municipios)
 subset = gpd.sjoin(muni, s, how='inner', predicate='contains')
 print(f'{subset["NM_MUN"].iloc[0]} - {subset["SIGLA_UF"].iloc[0]}, área = {100 * subset["AREA_KM2"].iloc[0]} ha')
@@ -42,7 +58,8 @@ try:
         print('.')
 
     cod_imovel = farm['cod_imovel'].iloc[0]
-    farm_file = f'{f_farms}{cod_imovel}.gpkg'
+    farm_file = f'{f_farms}/{cod_imovel}/CAR.gpkg'
+    Path(f'{f_farms}/{cod_imovel}').mkdir( parents = True, exist_ok = True)
     farm.to_file(farm_file, layer='AREA_IMOVEL_1', driver='GPKG', mode = 'w')
 
     # get layers
