@@ -1,5 +1,7 @@
 #%%
 run = 'f1'
+# f1 varios filtros, only L8 e L9, break em 2017
+
 farm_file = '/home/geodata/Clientes/0FARMS/SP-3500105-FE4419FECCB44A86AB2A4EF0F485B424/CAR.gpkg'
 folder_nc = farm_file.split('CAR.gpkg')[0] + f'nc/{run}/'
 print(folder_nc)
@@ -13,12 +15,11 @@ import numpy as np
 from pathlib import Path
 import geopandas as gpd
 from datetime import date, datetime
-from scipy.signal import savgol_filter
 
 from utils import *
 import matplotlib.pyplot as plt
 
-#%% Set environment and create AWS Session
+# Set environment and create AWS Session
 os.environ['CURL_CA_BUNDLE'] = '/etc/ssl/certs/ca-certificates.crt'
 os.environ['AWS_REQUEST_PAYER'] = 'requester'
 
@@ -30,7 +31,7 @@ print(aws_session)
 farm = gpd.read_file(farm_file, layer='AREA_IMOVEL_1')
 bbox = get_bbox(farm)
 
-# %% Satellite imagery query params
+#  Satellite imagery query params
 today = date.today()
 datetime_rangefull = str(f"2018-06-20/{str(today)}") #break  2017
 max_cloud = 100
@@ -46,7 +47,7 @@ print(collection)
 
 query_params = {
         "eo:cloud_cover": {"lt": max_cloud},
-        "platform": {"in": ["LANDSAT_5","LANDSAT_7","LANDSAT_8", "LANDSAT_9"]},
+        "platform": {"in": ["LANDSAT_8", "LANDSAT_9"]},
        "landsat:collection_category": { "in": ['T1']}
                 }
 
@@ -71,126 +72,157 @@ for ano in range(y0,yf):
     print(ano, datetime_range)
 
     datetime_range_name = datetime_range.replace('/','_')
+
     ds = get_cube(datetime_range, 
-                                     cat, 
-                                     collection_id, 
-                                     bbox, 
-                                     query_params, 
-                                     aws_session, assets)
+                                    cat, 
+                                    collection_id, 
+                                    bbox, 
+                                    query_params, 
+                                    aws_session, assets)
     ds = dropper( ds , sat = satellite ) 
 
-# é aqui que a filtragem acontece
+    # é aqui que a filtragem acontece
+    ds2 = ds.copy()
+
+    # valores extremos 
+    ds2 = xr.where(ds2 > 40000, np.nan, ds2)
+    ds2 = xr.where(ds2 < 5000, np.nan, ds2)
+    for asset in assets:
+        quantiles = [0.01,0.1,0.25,0.5,0.75,0.9,0.99]
+        print(asset)
+        print(quantiles)
+        print(np.nanquantile(ds2[asset],quantiles))
+        ds2[asset] = xr.where(ds2[asset] < np.nanquantile(ds2[asset],[0.01]), np.nan, ds2[asset])
+        ds2[asset] = xr.where(ds2[asset] > np.nanquantile(ds2[asset],[0.99]), np.nan, ds2[asset])
+        if asset == 'blue':
+            ds2[asset] = xr.where(ds2[asset] > np.nanquantile(ds2[asset],[0.76]), np.nan, ds2[asset])
+    
+    # interpolate_na
+    ds2 = ds2.chunk(dict(time=-1))
+    ds2 = ds2.interpolate_na(dim="time",
+            method='linear',
+            use_coordinate=True, 
+        ) 
+
+    # rolling
+    w = 3
+    ds2 = ds2.rolling(time=w, center=True).mean(skipna=True)
 
 
+    # REPROJECTION
+    print(f'reprojecting cube for {datetime_range}')
+    ds2 = ds2.rio.write_crs('epsg:4326')
+    ds2 = ds2.rio.reproject('EPSG:4326')
+    ds2 = ds2.rename({'x': 'longitude','y': 'latitude'})
+    print('reprojecting... done')
 
 
-
-
-
-
-    #ds.to_netcdf(f'{folder_nc}/DS_{datetime_range_name}.nc')
     # CALCULATE indices
-    ndvi, sfndvi = NDVI( ds )
-    bsi, sfbsi = BSI( ds )
+    ndvi = NDVI( ds2 )
+    bsi= BSI( ds2 )
     try:
         ndvi = dropper(ndvi, 'Landsat')
         bsi = dropper(bsi, 'Landsat')
     except:
         print('not dropping, probably wont save')
-
+    # save nc
     ndvi.to_netcdf(f'{folder_nc}/ndvi_{datetime_range_name}.nc')
     print('> ndvi saved')
     bsi.to_netcdf(f'{folder_nc}/bsi_{datetime_range_name}.nc')
-    print('> bsi saved')
+    print('> bsi saved') 
+
+
+
+# # # %%
+# # ndvi.clip(0,1000)
+# # # %% TEMOS UM ds
+
+
+# #%% a copy
+# ds2 = ds.copy(deep=True)
+
+# for asset in assets:
+#     plt.hist(np.ravel(ds2[asset].values), bins = 100)
+#     plt.title(asset); plt.grid();plt.show(); plt.close()
+
+# ts = ds2.sel(longitude = -46.64329, latitude = -22.07701, method = 'nearest')
+# for asset in assets:
+#     plt.plot(ts[asset].values, label = asset)
+
+# #%% filta os principais outliers
+# ds2 = ds.copy(deep=True)
+# ds2 = xr.where(ds2 > 40000, np.nan, ds2)
+# ds2 = xr.where(ds2 < 5000, np.nan, ds2)
+
+# for asset in assets:
+#     quantiles = [0.01,0.1,0.25,0.5,0.75,0.9,0.99]
+#     print(quantiles)
+#     print(np.nanquantile(ds2[asset],quantiles))
+#     ds2[asset] = xr.where(ds2[asset] < np.nanquantile(ds2[asset],[0.01]), np.nan, ds2[asset])
+#     ds2[asset] = xr.where(ds2[asset] > np.nanquantile(ds2[asset],[0.99]), np.nan, ds2[asset])
+#     if asset == 'blue':
+#         ds2[asset] = xr.where(ds2[asset] > np.nanquantile(ds2[asset],[0.76]), np.nan, ds2[asset])
+#         #ds2[asset] = xr.where(ds2[asset] < np.nanquantile(ds2[asset],[0.01]), np.nan, ds2[asset])
+#     plt.hist((np).ravel(ds2[asset].values), bins = 100)
+#     plt.title(asset); plt.grid();plt.show(); plt.close()
+
+# # farm.centroid
+# ts2 = ds2.sel(longitude = -46.64329, latitude = -22.07701, method = 'nearest')
+# for asset in assets:
+#     plt.plot(ts2[asset].values, label = asset)
+# plt.legend()
+# plt.grid()
+
+
+# # %% 
+# #f -> Interpolate NaN
+# #ds3 = ds2.copy()
+# method = 'linear'
+# ds3 = ds2.interpolate_na(dim="time",
+#             method=method,
+#             use_coordinate=True, 
+#         ) # pchip  # limit = 7, use_coordinate=True,
+
+
+# ts3 = ds3.sel(longitude = -46.64329, latitude = -22.07701, method = 'nearest')
+
+# for asset in assets:
+#     plt.plot(ts3[asset].values, label = asset)
+# plt.grid();plt.show();plt.close()
+
+# for asset in assets:
+#     plt.hist(np.ravel(ds3[asset].values), bins = 100)
+#     plt.title(asset); plt.grid();plt.show(); plt.close()
+
+# # %% 
+# # f -> rolling
+# w = 3
+# ds4 = ds3.rolling(time=w, center=True).mean(skipna=True)#savgol_filter, window=w, polyorder=2
+# ts4 = ds4.sel(longitude = -46.64329, latitude = -22.07701, method = 'nearest')
+
+# for asset in assets:
+#     plt.plot(ts4[asset].values, label = asset)
     
-# # %%
-# ndvi.clip(0,1000)
-# # %% TEMOS UM ds
+# plt.grid();plt.show();plt.close()
 
+# for asset in assets:
+#     plt.hist(np.ravel(ds4[asset].values), bins = 100)
+#     plt.title(asset); plt.grid();plt.show(); plt.close()
+# # %% 
+# for asset in assets:
+#     plt.hist(np.ravel(ds4[asset].values), bins = 100)
+#     plt.title(asset)
+#     plt.show(); plt.close()
+# ts2 = ds3.sel(longitude = -46.64329, latitude = -22.07701, method = 'nearest')
 
-#%% a copy
-ds2 = ds.copy(deep=True)
+# for asset in assets:
+#     plt.plot(ts2[asset].values, label = asset)
+# plt.legend()
+# plt.grid()
 
-for asset in assets:
-    plt.hist(np.ravel(ds2[asset].values), bins = 100)
-    plt.title(asset); plt.grid();plt.show(); plt.close()
+# for asset in assets:
+#     plt.hist(np.ravel(ds4[asset].values), bins = 100)
+#     plt.title(asset)
+#     plt.title(asset); plt.grid();plt.show(); plt.close()
 
-ts = ds2.sel(longitude = -46.64329, latitude = -22.07701, method = 'nearest')
-for asset in assets:
-    plt.plot(ts[asset].values, label = asset)
-
-#%% filta os principais outliers
-ds2 = ds.copy(deep=True)
-ds2 = xr.where(ds2 > 40000, np.nan, ds2)
-ds2 = xr.where(ds2 < 5000, np.nan, ds2)
-
-for asset in assets:
-    quantiles = [0.01,0.1,0.25,0.5,0.75,0.9,0.99]
-    print(quantiles)
-    print(np.nanquantile(ds2[asset],quantiles))
-    ds2[asset] = xr.where(ds2[asset] < np.nanquantile(ds2[asset],[0.01]), np.nan, ds2[asset])
-    ds2[asset] = xr.where(ds2[asset] > np.nanquantile(ds2[asset],[0.99]), np.nan, ds2[asset])
-    if asset == 'blue':
-        ds2[asset] = xr.where(ds2[asset] > np.nanquantile(ds2[asset],[0.76]), np.nan, ds2[asset])
-        #ds2[asset] = xr.where(ds2[asset] < np.nanquantile(ds2[asset],[0.01]), np.nan, ds2[asset])
-    plt.hist((np).ravel(ds2[asset].values), bins = 100)
-    plt.title(asset); plt.grid();plt.show(); plt.close()
-
-# farm.centroid
-ts2 = ds2.sel(longitude = -46.64329, latitude = -22.07701, method = 'nearest')
-for asset in assets:
-    plt.plot(ts2[asset].values, label = asset)
-plt.legend()
-plt.grid()
-
-
-# %% 
-#f -> Interpolate NaN
-#ds3 = ds2.copy()
-method = 'linear'
-ds3 = ds2.interpolate_na(dim="time",
-            method=method,
-            use_coordinate=True, 
-        ) # pchip  # limit = 7, use_coordinate=True,
-
-
-ts3 = ds3.sel(longitude = -46.64329, latitude = -22.07701, method = 'nearest')
-
-for asset in assets:
-    plt.plot(ts3[asset].values, label = asset)
-plt.grid();plt.show();plt.close()
-
-for asset in assets:
-    plt.hist(np.ravel(ds3[asset].values), bins = 100)
-    plt.title(asset); plt.grid();plt.show(); plt.close()
-
-# %% 
-# f -> rolling
-w = 3
-ds4 = ds3.rolling(time=w, center=True).mean(skipna=True)#savgol_filter, window=w, polyorder=2
-ts4 = ds4.sel(longitude = -46.64329, latitude = -22.07701, method = 'nearest')
-
-for asset in assets:
-    plt.plot(ts4[asset].values, label = asset)
-    
-plt.grid();plt.show();plt.close()
-
-for asset in assets:
-    plt.hist(np.ravel(ds4[asset].values), bins = 100)
-    plt.title(asset); plt.grid();plt.show(); plt.close()
-# %% 
-for asset in assets:
-    plt.hist(np.ravel(ds4[asset].values), bins = 100)
-    plt.title(asset)
-    plt.show(); plt.close()
-ts2 = ds3.sel(longitude = -46.64329, latitude = -22.07701, method = 'nearest')
-
-for asset in assets:
-    plt.plot(ts2[asset].values, label = asset)
-plt.legend()
-plt.grid()
-
-for asset in assets:
-    plt.hist(np.ravel(ds4[asset].values), bins = 100)
-    plt.title(asset)
-    plt.title(asset); plt.grid();plt.show(); plt.close()
+# %%

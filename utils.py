@@ -69,12 +69,12 @@ def get_cube(datetime_range, cat, collection_id, bbox, query_params, aws_session
         
     ds = dc.to_dataset( dim = 'band' ).persist()
     del dc
-    # REPROJECTION
-    print(f'reprojecting cube for {datetime_range}')
-    ds = ds.rio.write_crs('epsg:4326')
-    ds = ds.rio.reproject('EPSG:4326')
-    ds = ds.rename({'x': 'longitude','y': 'latitude'})
-    print('reprojecting... done')
+    # # REPROJECTION
+    # print(f'reprojecting cube for {datetime_range}')
+    # ds = ds.rio.write_crs('epsg:4326')
+    # ds = ds.rio.reproject('EPSG:4326')
+    # ds = ds.rename({'x': 'longitude','y': 'latitude'})
+    # print('reprojecting... done')
 
     return ds
 
@@ -126,40 +126,42 @@ def get_bbox( gdf ):
 
 
 
-def NDVI( ds , to_int = True ):
+def NDVI( ds ):
     '''
         NDVI for Landsat 8 and 9
         we apply a multiplying factor of 1000 to save data as uint16
     '''
 
 
-    if to_int == True:
-        sf = 1000
-    else:
-        sf = 1
+    # if to_int == True:
+    #     sf = 1000
+    # else:
+    #     sf = 1
 
-    ndvi = ((ds['nir08'] - ds['red']) / (ds['nir08'] + ds['red'])) * sf
+    ndvi = ((ds['nir08'] - ds['red']) / (ds['nir08'] + ds['red'])) 
     ndvi.name = 'ndvi'
-    ndvi = ndvi.astype('uint16')
-    print(f'the result was multiplied by {sf}')
+    ndvi = ndvi.astype('float32')
+    #print(f'the result was multiplied by {sf}')
 
-    return ndvi, sf
+    return ndvi#, sf
 
 
-def BSI( ds, to_int = True ):
+
+
+def BSI( ds ):
     '''
         BSI (Bare Soil Index) for Landsat 8 and 9
         XXX HAVE TO FIGURE OUT HOW TO SCALE WITH NEGATIVE NUMBERS
     '''
 
-    if to_int == True:
-        sf = 1000
-    else:
-        sf = 1
+    # if to_int == True:
+    #     sf = 1000
+    # else:
+    #     sf = 1
 
-    bsi = ((ds['swir16'] + ds['red']) - (ds['nir08'] + ds['blue'])) / ((ds['swir16'] + ds['red']) + (ds['nir08'] + ds['blue'])) * sf
+    bsi = ((ds['swir16'] + ds['red']) - (ds['nir08'] + ds['blue'])) / ((ds['swir16'] + ds['red']) + (ds['nir08'] + ds['blue'])) 
     bsi.name = 'bsi'
-    bsi = bsi.astype('uint16')
-    print(f'the result was multiplied by {sf}')
+    bsi = bsi.astype('float32')
+    #print(f'the result was multiplied by {sf}')
 
-    return bsi, sf
+    return bsi#, sf
