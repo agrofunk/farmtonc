@@ -1,6 +1,8 @@
 #%%
-farm_file = '/home/geodata/Clientes/0FARMS/MG-3102605-B4D344DBFD874F44906FCC0A5E0DCE36/CAR.gpkg'
-folder_nc = farm_file.split('CAR.gpkg')[0]
+run = 'f1'
+farm_file = '/home/geodata/Clientes/0FARMS/SP-3500105-FE4419FECCB44A86AB2A4EF0F485B424/CAR.gpkg'
+folder_nc = farm_file.split('CAR.gpkg')[0] + f'nc/{run}/'
+print(folder_nc)
 
 import os
 import boto3
@@ -11,6 +13,8 @@ import numpy as np
 from pathlib import Path
 import geopandas as gpd
 from datetime import date, datetime
+from scipy.signal import savgol_filter
+
 from utils import *
 import matplotlib.pyplot as plt
 
@@ -28,9 +32,8 @@ bbox = get_bbox(farm)
 
 # %% Satellite imagery query params
 today = date.today()
-datetime_rangefull = str(f"2013-06-20/{str(today)}")
-local_folder = '/home/geodata/Clientes/0FARMS/NC/'
-max_cloud = 80
+datetime_rangefull = str(f"2018-06-20/{str(today)}") #break  2017
+max_cloud = 100
 #bucketname = 'sanca'
 satellite = 'Landsat'
 
@@ -56,8 +59,11 @@ mf = str(datetime.strptime(datetime_rangefull.split('/')[1],'%Y-%m-%d').month).z
 d0 = str(datetime.strptime(datetime_rangefull.split('/')[0],'%Y-%m-%d').day).zfill(2)
 df = str(datetime.strptime(datetime_rangefull.split('/')[1],'%Y-%m-%d').day).zfill(2)
 # %%
-
+Path(folder_nc).mkdir( parents = True, exist_ok = True)
 for ano in range(y0,yf):
+    '''
+        TODO falta um globals aqui pra player com os dados
+    '''
 
     datetime_range = f'{ano}-{m0}-{d0}/{ano+1}-{m0}-{d0}'
     if yf == (ano+1):
@@ -73,6 +79,9 @@ for ano in range(y0,yf):
                                      aws_session, assets)
     ds = dropper( ds , sat = satellite ) 
 
+# é aqui que a filtragem acontece
+
+
 
 
 
@@ -82,93 +91,106 @@ for ano in range(y0,yf):
     #ds.to_netcdf(f'{folder_nc}/DS_{datetime_range_name}.nc')
     # CALCULATE indices
     ndvi, sfndvi = NDVI( ds )
-    ndvi = dropper(ndvi, 'Landsat')
     bsi, sfbsi = BSI( ds )
-    bsi = dropper(bsi, 'Landsat')
+    try:
+        ndvi = dropper(ndvi, 'Landsat')
+        bsi = dropper(bsi, 'Landsat')
+    except:
+        print('not dropping, probably wont save')
+
     ndvi.to_netcdf(f'{folder_nc}/ndvi_{datetime_range_name}.nc')
+    print('> ndvi saved')
     bsi.to_netcdf(f'{folder_nc}/bsi_{datetime_range_name}.nc')
+    print('> bsi saved')
     
-# %%
-ndvi.clip(0,1000)
-# %% TEMOS UM ds
+# # %%
+# ndvi.clip(0,1000)
+# # %% TEMOS UM ds
 
 
 #%% a copy
 ds2 = ds.copy(deep=True)
-plt.hist(np.ravel(ds2['red'].values), bins = 100)
 
-#%% filta os principais outliers
-ds2 = xr.where(ds2 > 42000, np.nan, ds2)
-ds2 = xr.where(ds2 < 1500, np.nan, ds2)
-# %% 
 for asset in assets:
     plt.hist(np.ravel(ds2[asset].values), bins = 100)
-    plt.title(asset)
-    plt.show(); plt.close()
+    plt.title(asset); plt.grid();plt.show(); plt.close()
 
-# %% centroid time-view
-# farm.centroid
 ts = ds2.sel(longitude = -46.64329, latitude = -22.07701, method = 'nearest')
 for asset in assets:
     plt.plot(ts[asset].values, label = asset)
-plt.legend()
-plt.grid()
 
-# %% Interpolate NaN
-ds3 = ds2.copy()
-ds3.interpolate_na(dim="time",
-            method="linear", 
-        )
-# for asset in assets:
-#     ds3[asset] = ds3[asset].interpolate_na(
-#             dim="time",
-#             method="linear",  # pchip
-#             # limit = 7,
-#             use_coordinate=True,
-#         )
+#%% filta os principais outliers
+ds2 = ds.copy(deep=True)
+ds2 = xr.where(ds2 > 40000, np.nan, ds2)
+ds2 = xr.where(ds2 < 5000, np.nan, ds2)
 
-# %%
-ts2 = ds3.sel(longitude = -46.64329, latitude = -22.07701, method = 'nearest')
+for asset in assets:
+    quantiles = [0.01,0.1,0.25,0.5,0.75,0.9,0.99]
+    print(quantiles)
+    print(np.nanquantile(ds2[asset],quantiles))
+    ds2[asset] = xr.where(ds2[asset] < np.nanquantile(ds2[asset],[0.01]), np.nan, ds2[asset])
+    ds2[asset] = xr.where(ds2[asset] > np.nanquantile(ds2[asset],[0.99]), np.nan, ds2[asset])
+    if asset == 'blue':
+        ds2[asset] = xr.where(ds2[asset] > np.nanquantile(ds2[asset],[0.76]), np.nan, ds2[asset])
+        #ds2[asset] = xr.where(ds2[asset] < np.nanquantile(ds2[asset],[0.01]), np.nan, ds2[asset])
+    plt.hist((np).ravel(ds2[asset].values), bins = 100)
+    plt.title(asset); plt.grid();plt.show(); plt.close()
+
+# farm.centroid
+ts2 = ds2.sel(longitude = -46.64329, latitude = -22.07701, method = 'nearest')
 for asset in assets:
     plt.plot(ts2[asset].values, label = asset)
 plt.legend()
 plt.grid()
 
-# %%
-from scipy.signal import savgol_filter
 
-w = 6
-ds4 = ds.rolling(time=w, center=True).mean(savgol_filter, window=w, polyorder=2)
+# %% 
+#f -> Interpolate NaN
+#ds3 = ds2.copy()
+method = 'linear'
+ds3 = ds2.interpolate_na(dim="time",
+            method=method,
+            use_coordinate=True, 
+        ) # pchip  # limit = 7, use_coordinate=True,
+
+
+ts3 = ds3.sel(longitude = -46.64329, latitude = -22.07701, method = 'nearest')
+
+for asset in assets:
+    plt.plot(ts3[asset].values, label = asset)
+plt.grid();plt.show();plt.close()
+
+for asset in assets:
+    plt.hist(np.ravel(ds3[asset].values), bins = 100)
+    plt.title(asset); plt.grid();plt.show(); plt.close()
+
+# %% 
+# f -> rolling
+w = 3
+ds4 = ds3.rolling(time=w, center=True).mean(skipna=True)#savgol_filter, window=w, polyorder=2
+ts4 = ds4.sel(longitude = -46.64329, latitude = -22.07701, method = 'nearest')
+
+for asset in assets:
+    plt.plot(ts4[asset].values, label = asset)
+    
+plt.grid();plt.show();plt.close()
+
+for asset in assets:
+    plt.hist(np.ravel(ds4[asset].values), bins = 100)
+    plt.title(asset); plt.grid();plt.show(); plt.close()
 # %% 
 for asset in assets:
     plt.hist(np.ravel(ds4[asset].values), bins = 100)
     plt.title(asset)
     plt.show(); plt.close()
-# %% last consequences
-ds2 = ds.copy(deep=True)
-ds2['swir16'] = xr.where(ds['swir16'] > 23000, np.nan, ds['swir16'])
-ds2['swir16'] = xr.where(ds['swir16'] < 5000, np.nan, ds['swir16'])
+ts2 = ds3.sel(longitude = -46.64329, latitude = -22.07701, method = 'nearest')
 
-ds2['nir08'] = xr.where(ds['nir08'] < 10000, np.nan, ds['nir08'])
-
-ds2['blue'] = xr.where(ds['blue'] < 2000, np.nan, ds['blue'])
-ds2['blue'] = xr.where(ds['blue'] > 22000, np.nan, ds['blue'])
-ds2['red'] = xr.where(ds['red'] < 4000, np.nan, ds['red'])
-ds2['red'] = xr.where(ds['red'] > 24000, np.nan, ds['red'])
-
-
-# interpolate_na
-# https://docs.xarray.dev/en/stable/generated/xarray.DataArray.interpolate_na.html
 for asset in assets:
-    ds2[asset] = ds2[asset].interpolate_na(dim = 'time', 
-                                          method = 'quadratic' 
-                                          )
+    plt.plot(ts2[asset].values, label = asset)
+plt.legend()
+plt.grid()
 
-    plt.hist(np.ravel(ds2[asset].values), 
-             bins = 100)
+for asset in assets:
+    plt.hist(np.ravel(ds4[asset].values), bins = 100)
     plt.title(asset)
-    plt.show(); plt.close()
-# %% TESTER xarray.DataArray.interp
-https://docs.xarray.dev/en/stable/generated/xarray.DataArray.interp.html
-
-
+    plt.title(asset); plt.grid();plt.show(); plt.close()

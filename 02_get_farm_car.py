@@ -3,6 +3,8 @@
         right on command line, like:
         
     python3 02_get_farm_car.py -47.84671 -21.96459
+    em Adamantina - SP -51.0617,-21.4830
+
 '''
 
 # CARs source folder
