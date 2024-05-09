@@ -21,8 +21,6 @@ def state2muni(file,outfolder):
         print(outfolder + mun + '.gpkg SAVED')
 
 
-
-
 '''
     OLD USEFUL functions
 
@@ -89,7 +87,7 @@ def dropper( ds, sat = 'Landsat' ):
         drops = ['landsat:correction','landsat:wrs_path',
                  'landsat:wrs_row','landsat:cloud_cover_land',
                     'landsat:collection_number','landsat:wrs_type','instruments',
-                    'raster:bands','eo:cloud_cover'
+                    'raster:bands','eo:cloud_cover','accuracy:geometric_x_stddev'
                     ]
         
     # if sat == 'Sentinel':
@@ -133,19 +131,11 @@ def NDVI( ds ):
     '''
 
 
-    # if to_int == True:
-    #     sf = 1000
-    # else:
-    #     sf = 1
-
     ndvi = ((ds['nir08'] - ds['red']) / (ds['nir08'] + ds['red'])) 
-    ndvi.name = 'ndvi'
+    ndvi.name = 'NDVI'
     ndvi = ndvi.astype('float32')
-    #print(f'the result was multiplied by {sf}')
 
-    return ndvi#, sf
-
-
+    return ndvi
 
 
 def BSI( ds ):
@@ -154,14 +144,87 @@ def BSI( ds ):
         XXX HAVE TO FIGURE OUT HOW TO SCALE WITH NEGATIVE NUMBERS
     '''
 
-    # if to_int == True:
-    #     sf = 1000
-    # else:
-    #     sf = 1
 
     bsi = ((ds['swir16'] + ds['red']) - (ds['nir08'] + ds['blue'])) / ((ds['swir16'] + ds['red']) + (ds['nir08'] + ds['blue'])) 
-    bsi.name = 'bsi'
+    bsi.name = 'BSI'
     bsi = bsi.astype('float32')
-    #print(f'the result was multiplied by {sf}')
 
-    return bsi#, sf
+    return bsi
+
+
+
+
+def zscore( ds , how = 'month' ):
+    '''
+        Calculate zscores 
+    '''
+    if how == 'month':
+        timeformat = "%Y-%m"
+        timelabel = "year_month"
+    if how == 'week':
+        timeformat = "%Y-%W"
+        timelabel = 'year_week'
+
+    print('computing ...')
+    ds = ds.assign_coords(year_month=ds.time.dt.strftime(timeformat))
+    ds_anom = ds.groupby(timelabel) - ds.groupby(timelabel).mean("time")
+    ds_z = ds_anom.groupby(timelabel) / ds.groupby(timelabel).std("time")
+   
+    ds_anom.compute()
+    ds_z.compute()
+    print('computing ... done')
+    return ds_anom, ds_z
+
+
+def climatology( ds ):
+    '''
+
+    '''
+    ds_mean = ds.groupby("time.month").mean("time")
+    ds_std = ds.groupby("time.month").std("time")
+    return ds_mean, ds_std
+
+
+
+
+# def get_lst(lwirband, items, dst, w=5):
+#     """
+#     Convert lwir to Celcius and prepare dataset for further processing
+#     lwirband (str): 'lwir' for 457 and lwirband for 89
+#     da (DataArray loaded from items__)
+#     w (int): rolling mean window size, default is 5
+#     """
+#     # get lwir11 band info
+#     band_info = items[0].assets[lwirband].extra_fields["raster:bands"][0]
+#     print(band_info)
+
+#     dst[lwirband] = dst[lwirband].astype(float)
+#     dst[lwirband] *= band_info["scale"]
+#     dst[lwirband] += band_info["offset"]
+#     dst[lwirband] -= 273.15
+
+#     # variables to drop so I can save the .nc later on
+#     drops = [
+#         "landsat:correction",
+#         "landsat:wrs_path",
+#         "landsat:wrs_row",
+#         "landsat:collection_number",
+#         "landsat:wrs_type",
+#         "instruments",
+#         "raster:bands",
+#         "instruments",
+#     ]
+#     dst = dst.drop_vars(drops)
+#     # interpolate NaNs (rechunk it first)
+#     dst = dst.chunk(dict(time=-1))
+#     dst[lwirband] = xr.where(dst[lwirband] < 1, np.nan, dst[lwirband])  #
+#     dst[lwirband] = xr.where(dst[lwirband] > 65, np.nan, dst[lwirband])
+#     dst[lwirband] = dst[lwirband].interpolate_na(dim="time", method="linear")
+
+#     # I`m overwriting the raw data
+#     dst[lwirband] = dst[lwirband].rolling(time=w, center=True).mean(savgol_filter, window=w, polyorder=2)
+#     del band_info
+#     return dst
+
+
+

@@ -1,8 +1,12 @@
 #%%
-run = 'f1'
+run = 'f3'
 # f1 varios filtros, only L8 e L9, break em 2017
+#   f1 salvando em float32
 
-farm_file = '/home/geodata/Clientes/0FARMS/SP-3500105-FE4419FECCB44A86AB2A4EF0F485B424/CAR.gpkg'
+# f2 = f1 + landsat 5 e 7
+#  tentar try except:
+
+farm_file = '/home/geodata/Clientes/0FARMS/MG-3102605-B4D344DBFD874F44906FCC0A5E0DCE36/CAR.gpkg'
 folder_nc = farm_file.split('CAR.gpkg')[0] + f'nc/{run}/'
 print(folder_nc)
 
@@ -33,7 +37,7 @@ bbox = get_bbox(farm)
 
 #  Satellite imagery query params
 today = date.today()
-datetime_rangefull = str(f"2018-06-20/{str(today)}") #break  2017
+datetime_rangefull = str(f"2023-06-20/{str(today)}") #break  2017
 max_cloud = 100
 #bucketname = 'sanca'
 satellite = 'Landsat'
@@ -47,7 +51,7 @@ print(collection)
 
 query_params = {
         "eo:cloud_cover": {"lt": max_cloud},
-        "platform": {"in": ["LANDSAT_8", "LANDSAT_9"]},
+        "platform": {"in": ["LANDSAT_5","LANDSAT_7","LANDSAT_8", "LANDSAT_9"]},
        "landsat:collection_category": { "in": ['T1']}
                 }
 
@@ -71,67 +75,84 @@ for ano in range(y0,yf):
         datetime_range = f'{ano}-{m0}-{d0}/{ano+1}-{mf}-{df}'
     print(ano, datetime_range)
 
+    datetime_range = '2013-06-20/2024-05-08'
     datetime_range_name = datetime_range.replace('/','_')
-
-    ds = get_cube(datetime_range, 
-                                    cat, 
-                                    collection_id, 
-                                    bbox, 
-                                    query_params, 
-                                    aws_session, assets)
-    ds = dropper( ds , sat = satellite ) 
-
-    # é aqui que a filtragem acontece
-    ds2 = ds.copy()
-
-    # valores extremos 
-    ds2 = xr.where(ds2 > 40000, np.nan, ds2)
-    ds2 = xr.where(ds2 < 5000, np.nan, ds2)
-    for asset in assets:
-        quantiles = [0.01,0.1,0.25,0.5,0.75,0.9,0.99]
-        print(asset)
-        print(quantiles)
-        print(np.nanquantile(ds2[asset],quantiles))
-        ds2[asset] = xr.where(ds2[asset] < np.nanquantile(ds2[asset],[0.01]), np.nan, ds2[asset])
-        ds2[asset] = xr.where(ds2[asset] > np.nanquantile(ds2[asset],[0.99]), np.nan, ds2[asset])
-        if asset == 'blue':
-            ds2[asset] = xr.where(ds2[asset] > np.nanquantile(ds2[asset],[0.76]), np.nan, ds2[asset])
-    
-    # interpolate_na
-    ds2 = ds2.chunk(dict(time=-1))
-    ds2 = ds2.interpolate_na(dim="time",
-            method='linear',
-            use_coordinate=True, 
-        ) 
-
-    # rolling
-    w = 3
-    ds2 = ds2.rolling(time=w, center=True).mean(skipna=True)
-
-
-    # REPROJECTION
-    print(f'reprojecting cube for {datetime_range}')
-    ds2 = ds2.rio.write_crs('epsg:4326')
-    ds2 = ds2.rio.reproject('EPSG:4326')
-    ds2 = ds2.rename({'x': 'longitude','y': 'latitude'})
-    print('reprojecting... done')
-
-
-    # CALCULATE indices
-    ndvi = NDVI( ds2 )
-    bsi= BSI( ds2 )
     try:
-        ndvi = dropper(ndvi, 'Landsat')
-        bsi = dropper(bsi, 'Landsat')
+        ds = get_cube(datetime_range, 
+                                        cat, 
+                                        collection_id, 
+                                        bbox, 
+                                        query_params, 
+                                        aws_session, assets)
+        ds = dropper( ds , sat = satellite ) 
+
+        # é aqui que a filtragem acontece
+        ds2 = ds.copy()
+
+        # valores extremos 
+        ds2 = xr.where(ds2 > 40000, np.nan, ds2)
+        ds2 = xr.where(ds2 < 5000, np.nan, ds2)
+        for asset in assets:
+            quantiles = [0.01,0.1,0.25,0.5,0.75,0.9,0.99]
+            print(asset)
+            print(quantiles)
+            print(np.nanquantile(ds2[asset],quantiles))
+            ds2[asset] = xr.where(ds2[asset] < np.nanquantile(ds2[asset],[0.01]), np.nan, ds2[asset])
+            ds2[asset] = xr.where(ds2[asset] > np.nanquantile(ds2[asset],[0.99]), np.nan, ds2[asset])
+            if asset == 'blue':
+                ds2[asset] = xr.where(ds2[asset] > np.nanquantile(ds2[asset],[0.76]), np.nan, ds2[asset])
+        
+        # interpolate_na
+        ds2 = ds2.chunk(dict(time=-1))
+        ds2 = ds2.interpolate_na(dim="time",
+                method='linear',
+                use_coordinate=True, 
+            ) 
+
+        # rolling
+        w = 3
+        ds2 = ds2.rolling(time=w, center=True).mean(skipna=True)
+
+
+        # REPROJECTION
+        print(f'reprojecting cube for {datetime_range}')
+        ds2 = ds2.rio.write_crs('epsg:4326')
+        ds2 = ds2.rio.reproject('EPSG:4326')
+        ds2 = ds2.rename({'x': 'longitude','y': 'latitude'})
+        print('reprojecting... done')
+
+
+        # CALCULATE indices
+        ndvi = NDVI( ds2 )
+        bsi= BSI( ds2 )
+
+        # get dates to save exact name
+        t0 = str(ndvi.time[0].values).split('T')[0]
+        t1 = str(ndvi.time[-1].values).split('T')[0]
+        n = len(ndvi.time)
+        try:
+            ndvi = dropper(ndvi, 'Landsat')
+            bsi = dropper(bsi, 'Landsat')
+        except:
+            print('not dropping, probably wont save')
+        # save nc
+        ndvi.to_netcdf(f'{folder_nc}/ndvi_{t0}-{t1}_{n}.nc')
+        print('> ndvi saved')
+        bsi.to_netcdf(f'{folder_nc}/bsi_{t0}-{t1}_{n}.nc')
+        print('> bsi saved') 
+
+        # # CALCULATE climatology
+        # ndvi_mean, ndvi_std = climatology(ndvi)
+        # bsi_mean, bsi_std = climatology(bsi)
+
+        # # CALCULATE Zscore and anomalies
+        # ndvi_anom, ndvi_z = zscore( ndvi, 
+        #                         how = 'month')
+        # bsi_anom, bsi_z = zscore( bsi, 
+        #                         how = 'month')
+
     except:
-        print('not dropping, probably wont save')
-    # save nc
-    ndvi.to_netcdf(f'{folder_nc}/ndvi_{datetime_range_name}.nc')
-    print('> ndvi saved')
-    bsi.to_netcdf(f'{folder_nc}/bsi_{datetime_range_name}.nc')
-    print('> bsi saved') 
-
-
+        print(f'{datetime_range} FAILED')
 
 # # # %%
 # # ndvi.clip(0,1000)
