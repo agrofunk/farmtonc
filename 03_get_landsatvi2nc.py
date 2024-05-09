@@ -6,7 +6,11 @@ run = 'f3'
 # f2 = f1 + landsat 5 e 7
 #  tentar try except:
 
-farm_file = '/home/geodata/Clientes/0FARMS/MG-3102605-B4D344DBFD874F44906FCC0A5E0DCE36/CAR.gpkg'
+# Anselmo Busatto
+#farm_file = '/home/geodata/Clientes/0FARMS/MG-3102605-B4D344DBFD874F44906FCC0A5E0DCE36/CAR.gpkg'
+
+# Barreiras BA
+farm_file = '/home/geodata/Clientes/0FARMS/FabioRicardi-Barreiras_BA/CARS-Fazenda_Savana.gpkg'
 folder_nc = farm_file.split('CAR.gpkg')[0] + f'nc/{run}/'
 print(folder_nc)
 
@@ -32,12 +36,16 @@ aws_session = rio.session.AWSSession(boto3.Session(), requester_pays=True)
 print(aws_session)
 
 # open Farm
-farm = gpd.read_file(farm_file, layer='AREA_IMOVEL_1')
+try:
+    farm = gpd.read_file(farm_file, layer='AREA_IMOVEL_1')
+except:
+    farm = gpd.read_file(farm_file)
+
 bbox = get_bbox(farm)
 
 #  Satellite imagery query params
 today = date.today()
-datetime_rangefull = str(f"2023-06-20/{str(today)}") #break  2017
+datetime_rangefull = str(f"2013-06-20/{str(today)}") #break  2017
 max_cloud = 100
 #bucketname = 'sanca'
 satellite = 'Landsat'
@@ -75,7 +83,7 @@ for ano in range(y0,yf):
         datetime_range = f'{ano}-{m0}-{d0}/{ano+1}-{mf}-{df}'
     print(ano, datetime_range)
 
-    datetime_range = '2013-06-20/2024-05-08'
+    #datetime_range = '2013-06-20/2024-05-08' SE QUISER FAZER A LOUCURA DE MANDAR TUDO DE UMA VEZ
     datetime_range_name = datetime_range.replace('/','_')
     try:
         ds = get_cube(datetime_range, 
@@ -246,4 +254,3 @@ for ano in range(y0,yf):
 #     plt.title(asset)
 #     plt.title(asset); plt.grid();plt.show(); plt.close()
 
-# %%
