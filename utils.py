@@ -87,7 +87,8 @@ def dropper( ds, sat = 'Landsat' ):
         drops = ['landsat:correction','landsat:wrs_path',
                  'landsat:wrs_row','landsat:cloud_cover_land',
                     'landsat:collection_number','landsat:wrs_type','instruments',
-                    'raster:bands','eo:cloud_cover','accuracy:geometric_x_stddev'
+                    'raster:bands','eo:cloud_cover','accuracy:geometric_x_stddev', 
+                    'accuracy:geometric_y_stddev', 'accuracy:geometric_rmse'
                     ]
         
     # if sat == 'Sentinel':

@@ -45,7 +45,8 @@ bbox = get_bbox(farm)
 
 #  Satellite imagery query params
 today = date.today()
-datetime_rangefull = str(f"2013-06-20/{str(today)}") #break  2017
+# datetime_rangefull = str(f"2013-06-20/{str(today)}") #break  2017
+datetime_rangefull = str(f"1985-06-20/2013-06-20") #break  2017
 max_cloud = 100
 #bucketname = 'sanca'
 satellite = 'Landsat'
