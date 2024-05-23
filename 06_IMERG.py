@@ -52,27 +52,29 @@ hdflist=sorted(glob.glob(dir+'*.HDF5'))
 print(len(hdflist))
 print("")
 
-'''
-#available datasets in hdf files
+
 print("available datasets in HDF5 files: ")
 singlehdflist=hdflist[0]
 insidehdffile=h5py.File(singlehdflist,"r+")
 insidehdffile.visit(printname)
 insidehdffile.close()
 print("")
-'''
+
+
 
 # %% user input for clipping capability
-print("enter the bounding box in decimal degrees")
-print("enter northern latitude: ")
-bottom=input()
-print("enter southern latitude: ")
-top=input()
-print("enter eastern longitude: ")
-right=input()
-print("enter western longitude: ")
-left=input()
-print("")
+# print("enter the bounding box in decimal degrees")
+# print("enter northern latitude: ")
+# bottom=input()
+# print("enter southern latitude: ")
+# top=input()
+# print("enter eastern longitude: ")
+# right=input()
+# print("enter western longitude: ")
+# left=input()
+# print("")
+
+left, bottom, right, top = -45.6317989900000001,-11.7891720200000005, -45.3921376099999989,-11.4813829900000002
 
 # %% datatype conversion
 #this loop clips the data by the user input bounding box outputs
