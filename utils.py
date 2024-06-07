@@ -1,3 +1,17 @@
+# DUPE TEST
+def dupetest(df):
+    '''
+        to test the consistency for time axis, looking for duplicates
+    '''
+    import numpy as np
+    if len(df.time) != len(np.unique(df.time.values)):
+        seen = set()
+        dupes = [x for x in df.time.values if x in seen or seen.add(x)] 
+        print(dupes)
+    else:
+        print('your time-series has no dupes, good job!')
+
+
 
 def state2muni(file,outfolder):
     '''
